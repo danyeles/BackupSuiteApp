@@ -1,139 +1,167 @@
 pipeline {
     agent any
 
-    parameters {
-        booleanParam(
-            name: 'BACKUP_ARR_APPS',
-            defaultValue: true,
-            description: 'Backup Arr applications'
-        )
-
-        booleanParam(
-            name: 'BACKUP_JELLYFIN',
-            defaultValue: true,
-            description: 'Backup Jellyfin configuration'
-        )
-
-        booleanParam(
-            name: 'BACKUP_JENKINS',
-            defaultValue: true,
-            description: 'Backup Jenkins Home'
-        )
-    }
-
     environment {
         BACKUP_ROOT = '/home/docker/backups'
-        DATESTAMP = "${new Date().format('yyyyMMdd-HHmm')}"
+        DATESTAMP = sh(
+            script: 'date +%Y%m%d-%H%M%S',
+            returnStdout: true
+        ).trim()
     }
 
     stages {
 
-        stage('Create Backup Folders') {
+        stage('Create Backup Structure') {
             steps {
                 sh '''
-                    mkdir -p ${BACKUP_ROOT}/configs
+                    mkdir -p ${BACKUP_ROOT}/apps
                     mkdir -p ${BACKUP_ROOT}/docker-inspect
                 '''
             }
         }
 
-        stage('Backup ARR Applications') {
-            when {
-                expression { params.BACKUP_ARR_APPS }
-            }
-
+        stage('Backup Application Configs') {
             steps {
-                sh '''
-                    APPS="
-                    sonarr
-                    radarr
-                    prowlarr
-                    readarr
-                    lidarr
-                    bazarr
-                    qbittorrent
-                    kavita
-                    audiobookshelf
-                    homepage
-                    "
 
-                    for APP in $APPS
-                    do
-                        if [ -d /home/docker/${APP}/config ]; then
-                            echo "Backing up ${APP}"
+                script {
 
-                            tar -czf \
-                            ${BACKUP_ROOT}/configs/${APP}-${DATESTAMP}.tar.gz \
-                            /home/docker/${APP}/config
-                        fi
-                    done
-                '''
+                    def backups = [
+                        [
+                            name: 'sonarr',
+                            path: '/home/docker/sonarr/config'
+                        ],
+                        [
+                            name: 'radarr',
+                            path: '/home/docker/radarr/config'
+                        ],
+                        [
+                            name: 'prowlarr',
+                            path: '/home/docker/prowlarr/config'
+                        ],
+                        [
+                            name: 'readarr',
+                            path: '/home/docker/readarr/config'
+                        ],
+                        [
+                            name: 'lidarr',
+                            path: '/home/docker/lidarr/config'
+                        ],
+                        [
+                            name: 'bazarr',
+                            path: '/home/docker/bazarr/config'
+                        ],
+                        [
+                            name: 'seerr',
+                            path: '/home/docker/seerr/config'
+                        ],
+                        [
+                            name: 'homepage',
+                            path: '/home/docker/homepage/config'
+                        ],
+                        [
+                            name: 'sortarr',
+                            path: '/home/docker/sortarr/config'
+                        ],
+                        [
+                            name: 'qbittorrent',
+                            path: '/opt/stacks/qbittorrent/config'
+                        ],
+                        [
+                            name: 'audiobookshelf-config',
+                            path: '/mnt/Media/audiobookshelf/config'
+                        ],
+                        [
+                            name: 'audiobookshelf-metadata',
+                            path: '/mnt/Media/audiobookshelf/metadata'
+                        ],
+                        [
+                            name: 'jellyfin',
+                            path: '/home/docker/jellyfin/config'
+                        ]
+                    ]
+
+                    backups.each { item ->
+
+                        sh """
+                            if [ -d "${item.path}" ]; then
+
+                                mkdir -p ${BACKUP_ROOT}/apps/${item.name}
+
+                                tar -czf \
+                                ${BACKUP_ROOT}/apps/${item.name}/${item.name}-${DATESTAMP}.tar.gz \
+                                ${item.path}
+
+                                cp \
+                                ${BACKUP_ROOT}/apps/${item.name}/${item.name}-${DATESTAMP}.tar.gz \
+                                ${BACKUP_ROOT}/apps/${item.name}/latest.tar.gz
+
+                                echo "Backed up ${item.name}"
+
+                            else
+
+                                echo "WARNING: ${item.path} not found"
+
+                            fi
+                        """
+                    }
+                }
             }
         }
 
-        stage('Backup Jellyfin') {
-            when {
-                expression { params.BACKUP_JELLYFIN }
-            }
-
+        stage('Export Docker Container Definitions') {
             steps {
-                sh '''
-                    if [ -d /home/docker/jellyfin/config ]; then
-                        tar -czf \
-                        ${BACKUP_ROOT}/configs/jellyfin-${DATESTAMP}.tar.gz \
-                        /home/docker/jellyfin/config
-                    fi
-                '''
-            }
-        }
 
-        stage('Backup Jenkins') {
-            when {
-                expression { params.BACKUP_JENKINS }
-            }
-
-            steps {
-                sh '''
-                    if [ -d /var/jenkins_home ]; then
-                        tar -czf \
-                        ${BACKUP_ROOT}/configs/jenkins-${DATESTAMP}.tar.gz \
-                        /var/jenkins_home
-                    fi
-                '''
-            }
-        }
-
-        stage('Docker Inspect Export') {
-            steps {
                 sh '''
                     docker ps -a --format "{{.Names}}" | while read container
                     do
-                        docker inspect ${container} > \
-                        ${BACKUP_ROOT}/docker-inspect/${container}-${DATESTAMP}.json
+                        docker inspect "${container}" > \
+                        ${BACKUP_ROOT}/docker-inspect/${container}.json
                     done
                 '''
             }
         }
 
-        stage('Cleanup Old Backups') {
+        stage('Create Manifest') {
             steps {
+
                 sh '''
-                    find ${BACKUP_ROOT} \
-                    -type f \
+                    find ${BACKUP_ROOT} -type f \
+                    | sort \
+                    > ${BACKUP_ROOT}/backup-manifest.txt
+                '''
+            }
+        }
+
+        stage('Retention') {
+            steps {
+
+                sh '''
+                    find ${BACKUP_ROOT}/apps \
+                    -name "*.tar.gz" \
+                    ! -name "latest.tar.gz" \
                     -mtime +30 \
-                    -delete
+                    -delete || true
                 '''
             }
         }
     }
 
     post {
+
         success {
-            echo "Backup completed successfully."
+            echo '''
+=========================================================
+MEDIA STACK BACKUP COMPLETED
+=========================================================
+'''
         }
 
         failure {
-            echo "Backup failed."
+            echo '''
+=========================================================
+MEDIA STACK BACKUP FAILED
+=========================================================
+'''
         }
     }
 }
