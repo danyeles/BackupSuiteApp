@@ -89,7 +89,7 @@ pipeline {
                         [
                             name: 'jellyfin-full',
                             path: '/var/lib/jellyfin'
-                        ]
+                        ],
                         [
                             name: 'jellyfin-config',
                             path: '/etc/jellyfin'
