@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        BACKUP_ROOT = '/home/docker/backups'
+        BACKUP_ROOT = '/mnt/Backups'
         DATESTAMP = sh(
             script: 'date +%Y%m%d-%H%M%S',
             returnStdout: true
@@ -75,8 +75,24 @@ pipeline {
                             path: '/mnt/Media/audiobookshelf/metadata'
                         ],
                         [
-                            name: 'jellyfin',
-                            path: '/home/docker/jellyfin/config'
+                            name: 'jellyfin-data',
+                            path: '/var/lib/jellyfin/data'
+                        ],
+                        [
+                            name: 'jellyfin-plugins',
+                            path: '/var/lib/jellyfin/plugins'
+                        ],
+                        [
+                            name: 'jellyfin-config',
+                            path: '/etc/jellyfin'
+                        ],
+                        [
+                            name: 'jellyfin-full',
+                            path: '/var/lib/jellyfin'
+                        ]
+                        [
+                            name: 'jellyfin-config',
+                            path: '/etc/jellyfin'
                         ]
                     ]
 
