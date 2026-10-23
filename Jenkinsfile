@@ -103,7 +103,7 @@ pipeline {
 
                                 mkdir -p ${BACKUP_ROOT}/apps/${item.name}
 
-                                tar -czf \
+                                sudo tar -czf \
                                 ${BACKUP_ROOT}/apps/${item.name}/${item.name}-${DATESTAMP}.tar.gz \
                                 ${item.path}
 
